@@ -1,68 +1,110 @@
 """
-Model catalogue for the router.
+Model catalogue.
 
-Costs are US dollars per one million tokens, taken from each provider's
-public pricing page. VERIFY THESE BEFORE SUBMITTING. Provider pricing moves,
-and a router that optimises cost with stale numbers optimises nothing.
-
-quality is a 1-10 judgement, not a benchmark score. It is the number the
-router trades against cost, so it should be replaced with measured scores
-from the benchmark once that has been run.
+Provider-neutral model definitions.
+The router uses quality, cost and latency values to select
+the best model for each request.
 """
 
-MODELS: dict[str, dict] = {
-    "llama-8b": {
+
+MODELS = {
+
+    # -------------------------
+    # Groq Fast Model
+    # -------------------------
+
+    "groq-fast": {
         "provider": "groq",
-        "model": "llama-3.1-8b-instant",
-        "input_cost": 0.05,
-        "output_cost": 0.08,
-        "typical_latency": 0.4,
+        "model": "allam-2-7b",
         "quality": 5,
-        "tier": "small",
-        "notes": "Cheapest and fastest. Fine for lookups and short rewrites.",
+        "output_cost": 0.08,
+        "typical_latency": 0.5,
     },
-    "llama-70b": {
+
+
+    # -------------------------
+    # Groq Medium Model
+    # -------------------------
+
+    "groq-medium": {
         "provider": "groq",
-        "model": "llama-3.3-70b-versatile",
-        "input_cost": 0.59,
-        "output_cost": 0.79,
-        "typical_latency": 1.2,
+        "model": "qwen/qwen3.8-27b",
         "quality": 7,
-        "tier": "medium",
-        "notes": "Good general model, still fast on Groq hardware.",
+        "output_cost": 0.40,
+        "typical_latency": 1.0,
     },
+
+
+    # -------------------------
+    # Groq Reasoning Model
+    # -------------------------
+
+    "groq-reasoning": {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b",
+        "quality": 9,
+        "output_cost": 0.80,
+        "typical_latency": 1.5,
+    },
+
+
+    # -------------------------
+    # Gemini Fast
+    # -------------------------
+
     "gemini-flash": {
         "provider": "gemini",
-        "model": "gemini-2.5-flash",
-        "input_cost": 0.30,
+        "model": "gemini-3.6-flash",
+        "quality": 8,
         "output_cost": 2.50,
         "typical_latency": 1.5,
-        "quality": 8,
-        "tier": "medium",
-        "notes": "Long context, reliable structured output.",
     },
+
+
+    # -------------------------
+    # Gemini Pro
+    # -------------------------
+
     "gemini-pro": {
         "provider": "gemini",
-        "model": "gemini-2.5-pro",
-        "input_cost": 1.25,
-        "output_cost": 10.00,
-        "typical_latency": 4.0,
+        "model": "gemini-3.1-pro-preview",
         "quality": 10,
-        "tier": "large",
-        "notes": "Reasoning and long analysis. 25x the output cost of 8B.",
+        "output_cost": 5.00,
+        "typical_latency": 4.0,
     },
+
 }
 
 
+
 def estimate_tokens(text: str) -> int:
-    """Rough token count. Good enough for cost comparison, not for billing."""
-    return max(1, int(len(text.split()) * 1.3))
+    """
+    Rough token estimation.
+    Used when providers do not return usage metadata.
+    """
+
+    words = len(text.split())
+
+    return max(1, int(words * 1.3))
 
 
-def estimate_cost(model_key: str, input_tokens: int, output_tokens: int) -> float:
-    """Dollar cost of one call, given token counts."""
+
+def estimate_cost(
+    model_key: str,
+    input_tokens: int,
+    output_tokens: int
+) -> float:
+
     spec = MODELS[model_key]
+
+    input_cost = spec.get(
+        "input_cost",
+        spec["output_cost"] / 2
+    )
+
+
     return (
-        input_tokens / 1_000_000 * spec["input_cost"]
-        + output_tokens / 1_000_000 * spec["output_cost"]
+        input_tokens / 1_000_000 * input_cost
+        +
+        output_tokens / 1_000_000 * spec["output_cost"]
     )

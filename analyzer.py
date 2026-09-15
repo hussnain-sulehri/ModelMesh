@@ -1,161 +1,492 @@
 """
-Request complexity analysis.
+ModelMesh request complexity analyzer.
 
-Two strategies, so they can be compared rather than assumed:
+Classifies requests into:
+LOW
+MEDIUM
+HIGH
 
-1. keyword  - free, instant, and wrong often enough to matter
-2. llm      - costs a small model call, but reads intent instead of strings
+Hybrid strategy:
+1. Fast local heuristic analysis
+2. Semantic LLM classification only for uncertain requests
 
-The keyword version returns every signal it found, not just the first match.
-Returning on the first hit made "write hello world" score medium because of
-"write", and "compare 2 and 3" score high because of "compare".
+This avoids unnecessary classifier calls while handling
+complex prompts that do not contain predefined keywords.
 """
 
 import re
 
+
+# --------------------------------------------------
+# Complexity signals
+# --------------------------------------------------
+
 HIGH_KEYWORDS = {
-    "analyze", "analysis", "research", "compare", "methodology", "evaluate",
-    "architecture", "strategy", "critique", "prove", "derive", "trade-off",
-    "tradeoff", "why does", "explain why", "step by step", "reason about",
+    "deep search",
+    "research",
+    "investigate",
+    "benchmark",
+    "evaluate",
+    "compare",
+    "analyze",
+    "analysis",
+    "tradeoff",
+
+    "architecture",
+    "system design",
+    "scalable architecture",
+    "technical architecture",
+    "distributed system",
+    "infrastructure",
+
+    "enterprise",
+    "production",
+    "migration",
+    "strategy",
+
+    "optimization",
+    "optimize",
+    "high availability",
+    "fault tolerance",
+    "reliability",
+
+    "orchestration",
+    "fallback",
+    "cascade",
 }
+
 
 MEDIUM_KEYWORDS = {
-    "write", "create", "code", "develop", "summarize", "explain", "generate",
-    "refactor", "debug", "translate", "rewrite", "draft", "implement",
+    "code",
+    "write",
+    "create",
+    "build",
+    "implement",
+    "develop",
+
+    "api",
+    "database",
+    "authentication",
+    "jwt",
+
+    "framework",
+    "deployment",
+    "integration",
+    "algorithm",
+
+    "function",
+    "script",
+    "application",
+
+    "debug",
+    "fix",
+    "modify",
 }
 
-# Short factual asks. These override keyword hits, because "compare 2 and 3"
-# is not a research task no matter which word it contains.
-TRIVIAL_PATTERNS = [
-    r"^what is \w+( \w+)?\??$",
-    r"^who (is|was) [\w\s]{1,25}\??$",
-    r"^when (is|was|did) [\w\s]{1,25}\??$",
-    r"^(capital|population) of [\w\s]{1,20}\??$",
-    r"^\d+\s*[\+\-\*/]\s*\d+",
-    r"^(hi|hello|hey|thanks|thank you)\b",
-]
 
-LEVELS = ("low", "medium", "high")
+TECHNICAL_KEYWORDS = {
+    "python",
+    "javascript",
+    "java",
+
+    "api",
+    "database",
+    "sql",
+
+    "docker",
+    "kubernetes",
+    "cloud",
+
+    "security",
+    "authentication",
+
+    "machine learning",
+    "deep learning",
+    "artificial intelligence",
+    "ai",
+
+    "llm",
+    "model",
+    "router",
+
+    "backend",
+    "frontend",
+
+    "distributed",
+    "architecture",
+    "infrastructure",
+    "pipeline",
+}
 
 
-def _trivial(text: str) -> bool:
-    return any(re.match(pattern, text.strip()) for pattern in TRIVIAL_PATTERNS)
+LOW_PATTERNS = (
+    r"^what is\b",
+    r"^who is\b",
+    r"^define\b",
+    r"^explain\b",
+    r"^what does\b",
+)
 
 
-def analyze_keyword(prompt: str) -> dict:
-    """
-    Score a request from surface signals.
+DESIGN_PATTERNS = (
+    r"\bhow would you design\b",
+    r"\bdesign (?:a|an|the)\b",
+    r"\barchitect (?:a|an|the)\b",
+    r"\bpropose (?:a|an|the)\b",
+    r"\bdevise (?:a|an|the)\b",
+)
 
-    Returns the level, a 0-100 score, and every signal found, so the routing
-    decision can be explained instead of asserted.
-    """
+
+CONSTRAINT_WORDS = {
+    "must",
+    "should",
+    "while",
+    "however",
+    "if",
+    "when",
+    "without",
+    "minimize",
+    "maximize",
+    "maintain",
+    "ensure",
+}
+
+
+# --------------------------------------------------
+# Local heuristic analyzer
+# --------------------------------------------------
+
+def analyze_rules(prompt: str) -> dict:
+
     text = prompt.lower().strip()
-    words = len(prompt.split())
+    words = len(text.split())
 
-    signals: list[str] = []
     score = 0
+    signals = []
 
-    if _trivial(text):
-        return {
-            "complexity": "low",
-            "score": 0,
-            "signals": ["matched a short factual pattern"],
-            "words": words,
-            "method": "keyword",
-        }
+    found_high = sorted(
+        word for word in HIGH_KEYWORDS
+        if word in text
+    )
 
-    found_high = sorted(k for k in HIGH_KEYWORDS if k in text)
-    found_medium = sorted(k for k in MEDIUM_KEYWORDS if k in text)
+    found_medium = sorted(
+        word for word in MEDIUM_KEYWORDS
+        if word in text
+    )
+
+    found_technical = sorted(
+        word for word in TECHNICAL_KEYWORDS
+        if word in text
+    )
+
+    # --------------------------------------------------
+    # High-level reasoning
+    # --------------------------------------------------
 
     if found_high:
-        score += 40
-        signals.append(f"reasoning words: {', '.join(found_high[:3])}")
+        score += 45
+
+        signals.append(
+            "high-level reasoning: "
+            + ", ".join(found_high[:4])
+        )
+
+    # --------------------------------------------------
+    # Implementation work
+    # --------------------------------------------------
 
     if found_medium:
         score += 20
-        signals.append(f"task words: {', '.join(found_medium[:3])}")
 
-    # Length is a weak signal on its own but a useful tie-breaker.
-    if words > 200:
-        score += 30
-        signals.append(f"long input ({words} words)")
-    elif words > 60:
-        score += 15
-        signals.append(f"medium input ({words} words)")
-    elif words < 8:
-        score -= 15
-        signals.append(f"very short input ({words} words)")
+        signals.append(
+            "implementation task: "
+            + ", ".join(found_medium[:4])
+        )
 
-    # Multi-part requests are usually harder than their wording suggests.
-    parts = len(re.findall(r"\n\s*\d+[\.\)]|\n\s*[-*]\s", prompt))
-    if parts >= 3:
+    # --------------------------------------------------
+    # Technical density
+    # --------------------------------------------------
+
+    technical_count = len(found_technical)
+
+    if technical_count:
+        score += min(
+            30,
+            10 + technical_count * 5
+        )
+
+        signals.append(
+            "technical domain signals: "
+            + ", ".join(found_technical[:5])
+        )
+
+    # --------------------------------------------------
+    # Architectural/design intent
+    # --------------------------------------------------
+
+    design_intent = any(
+        re.search(pattern, text)
+        for pattern in DESIGN_PATTERNS
+    )
+
+    if design_intent:
+
         score += 20
-        signals.append(f"{parts} sub-requests")
 
-    if "```" in prompt or re.search(r"\bdef \w+|\bclass \w+|SELECT .+ FROM", prompt):
+        signals.append(
+            "system/design intent detected"
+        )
+
+    # --------------------------------------------------
+    # Request length
+    # --------------------------------------------------
+
+    if words <= 7:
+
+        score -= 10
+
+        signals.append(
+            "short request"
+        )
+
+    elif words >= 30:
+
         score += 15
-        signals.append("contains code")
 
-    score = max(0, min(100, score))
+        signals.append(
+            "detailed request"
+        )
 
-    if score >= 55:
-        level = "high"
-    elif score >= 20:
-        level = "medium"
+    elif words >= 15:
+
+        score += 5
+
+    # --------------------------------------------------
+    # Constraints
+    # --------------------------------------------------
+
+    constraint_hits = [
+        word for word in CONSTRAINT_WORDS
+        if word in text
+    ]
+
+    if len(constraint_hits) >= 2:
+
+        score += 10
+
+        signals.append(
+            "multiple constraints detected"
+        )
+
+    # --------------------------------------------------
+    # Multi-part structure
+    # --------------------------------------------------
+
+    clauses = len(
+        re.findall(
+            r"[.;:]|\b(?:and|but|however|while|then)\b",
+            text
+        )
+    )
+
+    if clauses >= 4:
+
+        score += 10
+
+        signals.append(
+            "multi-part reasoning"
+        )
+
+    # --------------------------------------------------
+    # Clear simple question
+    # --------------------------------------------------
+
+    simple_pattern = any(
+        re.search(pattern, text)
+        for pattern in LOW_PATTERNS
+    )
+
+    if (
+        simple_pattern
+        and not found_high
+        and technical_count <= 1
+        and words < 15
+    ):
+
+        score -= 15
+
+        signals.append(
+            "simple informational request"
+        )
+
+    # --------------------------------------------------
+    # Normalize
+    # --------------------------------------------------
+
+    score = max(
+        0,
+        min(score, 100)
+    )
+
+    if score >= 70:
+        complexity = "high"
+
+    elif score >= 35:
+        complexity = "medium"
+
     else:
-        level = "low"
+        complexity = "low"
 
     return {
-        "complexity": level,
+        "complexity": complexity,
         "score": score,
-        "signals": signals or ["no strong signals"],
+        "signals": signals,
+        "method": "heuristic",
         "words": words,
-        "method": "keyword",
     }
 
 
-CLASSIFIER_PROMPT = """Classify how much model capability this request needs.
+# --------------------------------------------------
+# Semantic classifier
+# --------------------------------------------------
 
-low    - lookup, greeting, arithmetic, one-line answer
-medium - writing, coding, summarising, explaining a concept
-high   - multi-step reasoning, analysis, comparison with trade-offs,
-         long documents, anything where a weak answer would be obvious
+def classify_with_llm(prompt: str, call):
 
-Reply with one word only: low, medium, or high.
+    classifier_prompt = f"""
+You are the complexity classifier for an AI model router.
 
-REQUEST:
-{prompt}"""
+Classify the USER REQUEST into exactly one category:
+
+LOW
+Simple factual questions, definitions, basic explanations,
+simple transformations, or tasks requiring little reasoning.
+
+MEDIUM
+Normal programming, implementation, summarization,
+technical explanation, ordinary analysis, or moderate reasoning.
+
+HIGH
+System design, architecture, advanced research,
+multi-stage reasoning, optimization, infrastructure design,
+distributed systems, reliability engineering, complex tradeoffs,
+or requests containing several interacting technical constraints.
+
+Judge semantic difficulty, not specific keywords.
+
+Examples:
+
+Request:
+Explain what HTML is
+Classification:
+LOW
+
+Request:
+Write Python code for JWT authentication API
+Classification:
+MEDIUM
+
+Request:
+Design a distributed inference routing mechanism that balances
+model locality, latency, cold starts and network traffic
+Classification:
+HIGH
+
+USER REQUEST:
+{prompt}
+
+Return ONLY:
+LOW
+MEDIUM
+or
+HIGH
+"""
+
+    try:
+
+        response = call(
+            classifier_prompt
+        )
+
+        value = str(response).strip().lower()
+
+        # tolerate small amounts of model formatting
+        match = re.search(
+            r"\b(low|medium|high)\b",
+            value
+        )
+
+        if match:
+            return match.group(1)
+
+    except Exception:
+        # Classification failure should never break routing
+        pass
+
+    return None
 
 
-def analyze_llm(prompt: str, call) -> dict:
-    """
-    Classify with a small model.
-
-    `call` is a function that takes a prompt string and returns text, so this
-    module stays free of provider code and can be tested with a fake.
-    """
-    reply = call(CLASSIFIER_PROMPT.format(prompt=prompt[:4000])).strip().lower()
-
-    level = next((lvl for lvl in LEVELS if lvl in reply), None)
-
-    if level is None:
-        # Fall back rather than guess. A failed classifier should not silently
-        # route everything to the cheapest model.
-        fallback = analyze_keyword(prompt)
-        fallback["signals"].append("llm classifier reply unreadable, fell back")
-        return fallback
-
-    return {
-        "complexity": level,
-        "score": {"low": 10, "medium": 40, "high": 80}[level],
-        "signals": [f"classifier said {level}"],
-        "words": len(prompt.split()),
-        "method": "llm",
-    }
-
+# --------------------------------------------------
+# Main analyzer
+# --------------------------------------------------
 
 def analyze_request(prompt: str, call=None) -> dict:
-    """Use the LLM classifier when a caller is supplied, keywords otherwise."""
+
+    result = analyze_rules(prompt)
+
+    score = result["score"]
+
+    # --------------------------------------------------
+    # Confidence gates
+    # --------------------------------------------------
+    #
+    # Very obvious LOW or HIGH requests can be handled
+    # locally without spending another API request.
+    #
+    # The semantic classifier is used only in the
+    # ambiguous middle region.
+    # --------------------------------------------------
+
+    confident_low = score <= 20
+
+    confident_high = score >= 80
+
+
+    if confident_low or confident_high:
+
+        result["method"] = "heuristic-confident"
+
+        return result
+
+
+    # --------------------------------------------------
+    # Semantic fallback
+    # --------------------------------------------------
+
     if call is not None:
-        return analyze_llm(prompt, call)
-    return analyze_keyword(prompt)
+
+        semantic_complexity = classify_with_llm(
+            prompt,
+            call
+        )
+
+
+        if semantic_complexity:
+
+            previous = result["complexity"]
+
+            result["complexity"] = (
+                semantic_complexity
+            )
+
+            result["method"] = (
+                "hybrid-semantic"
+            )
+
+            result["signals"].append(
+                "semantic classifier: "
+                f"{previous.upper()} → "
+                f"{semantic_complexity.upper()}"
+            )
+
+
+    return result
