@@ -18,8 +18,14 @@ from models import MODELS, estimate_cost, estimate_tokens
 # which a pure weighted score will happily do whenever quality is weighted at
 # all. Both halves are needed; a floor alone was measured routing trivial
 # requests to a 70B model.
+#
+# NOTE: the LOW ceiling was raised from 6 to 7 so more than one model is
+# eligible for simple requests. At 6, only groq-fast (quality 5) qualified,
+# which meant the cost/speed/quality sliders had zero effect on that band --
+# verify_models.py's band-occupancy check flags this as "single candidate,
+# weights have no effect here" if it regresses.
 MIN_QUALITY = {"low": 4, "medium": 7, "high": 9}
-MAX_QUALITY = {"low": 6, "medium": 8, "high": 10}
+MAX_QUALITY = {"low": 7, "medium": 8, "high": 10}
 
 DEFAULT_WEIGHTS = {"cost": 0.4, "speed": 0.2, "quality": 0.4}
 

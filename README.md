@@ -1,11 +1,11 @@
 # ModelMesh
 
-Intelligent LLM routing infrastructure that automatically selects the best AI model for each request based on **complexity, cost, latency, and quality requirements**.
+Intelligent LLM routing infrastructure that dynamically selects the most suitable AI model for each request based on complexity, cost, latency, quality requirements, and provider availability.
 
 > Built for the AI Infrastructure Hackathon, September 2026.
 
-**Live Demo:** _TBD_
-**Repository:** _TBD_
+**Live Demo:** https://modelmesh.streamlit.app/
+**Repository:**https://github.com/hussnain-sulehri/ModelMesh
 
 ---
 
@@ -44,15 +44,25 @@ For every request, it:
 
 ### 1. Hybrid Complexity Intelligence
 
-Pure keyword matching misses complex requests phrased in unfamiliar ways (e.g. *"Design a production AI inference gateway with model locality optimization and fault-tolerant routing"* — clearly complex, but with no obvious trigger words).
+Early keyword-only routing failed on complex technical requests that did not contain obvious trigger words. For example, advanced architecture questions could be classified as medium if important concepts were expressed differently. (e.g. *"Design a production AI inference gateway with model locality optimization and fault-tolerant routing"* — clearly complex, but with no obvious trigger words).
 
-The hybrid analyzer solves this:
+The improved analyzer combines multiple signals:
 
 ```
-User Request
-   → Fast rule-based analyzer
-      → High confidence?  → YES → Route directly
-                          → NO  → Semantic classifier (small LLM) → Final complexity: LOW / MEDIUM / HIGH
+        User Request
+            |
+            v
+Keyword + Technical Domain Detection
+            |
+            v
+Request Structure Analysis 
+(length, constraints, multi-step reasoning)
+            |
+            v
+      Complexity Score
+            |
+            v
+     LOW / MEDIUM / HIGH
 ```
 
 **Benefits:**
@@ -66,12 +76,16 @@ User Request
 |---|---|---|
 | **LOW** | "Explain HTML", "What is Python?", "Define API" | Cheaper, faster models |
 | **MEDIUM** | "Write a JWT authentication API", "Create database integration" | Models with stronger reasoning/implementation ability |
-| **HIGH** | "Design scalable AI SaaS architecture", "Design multimodal routing with LVLM fallback and latency optimization" | Advanced reasoning models |
+| **HIGH** | "Design scalable AI SaaS architecture", "Design a ModelMesh router with multimodal inputs, LVLM routing, fallback pipelines and latency constraints" | Advanced reasoning models |
 
 ### 3. Intelligent Routing Engine
 
 Models are scored on quality capability, cost, latency, complexity requirement, and live availability, then filtered by:
-
+The router also provides explainability:
+- Why a model was selected
+- Why other models were rejected
+- Expected cost comparison
+- Estimated savings against the largest model
 - **Quality Floor** — blocks complex requests from reaching weak/lightweight models
 - **Quality Ceiling** — blocks simple requests from reaching expensive premium models
 
@@ -95,7 +109,7 @@ Tested against invalid API keys, unavailable models, provider errors, and simula
 | Balanced | Qwen 3.8 27B | Groq | Coding, analysis, general technical tasks | Medium | Fast |
 | Reasoning | GPT-OSS 120B | Groq | Architecture, complex reasoning, system design | Higher | Moderate |
 | Advanced | Gemini 3.6 Flash | Google | Long context, advanced analysis | Medium | Moderate |
-| Premium | Gemini 3.1 Pro Preview | Google | Highest-quality reasoning tasks | Highest | Slower |
+| Premium | Gemini 3.1 Pro Preview | Google | Advanced reasoning and high-quality complex tasks | Highest | Slower
 
 ## Multi-Provider Architecture
 
@@ -112,6 +126,7 @@ Every response is measured against the cost of always using the largest model:
 Selected model:  $0.000034
 Largest model:   $0.000210
 Savings:         83%
+During testing, complex requests routed to smaller suitable models achieved significant savings compared with always selecting the largest available model.
 ```
 
 This makes the optimization claim measurable, not just asserted.
@@ -130,7 +145,7 @@ This makes the optimization claim measurable, not just asserted.
 | v6 | Cost tracking and savings calculation | Optimization became measurable |
 | v7 | Improved session management | Removed duplicate executions and stale responses |
 | v8 | Hybrid complexity analyzer | Better handling of unseen complex requests |
-
+v9 | Professional demo interface improvements | Added quick demos, routing explanation, savings visualization and improved session handling
 ## Challenges Faced
 
 **Model availability changes** — provider model IDs (e.g. `gemini-2.5-flash`, older Groq IDs) became unavailable mid-development.
@@ -145,13 +160,33 @@ This makes the optimization claim measurable, not just asserted.
 **Router calibration** — early versions over-used expensive models or under-served hard requests.
 → *Solved by tuning complexity scoring, quality requirements, and routing thresholds.*
 
+**Demo reliability** — manual testing required repeatable examples for LOW, MEDIUM and HIGH routing scenarios.
+→ *Solved with predefined demo prompts and controlled test cases for consistent evaluation.*
 ---
+
+## Demo Scenarios
+
+ModelMesh was tested with three routing categories:
+
+| Request Type | Example | Expected Routing |
+|---|---|---|
+| Simple | Explain HTML | Fast low-cost model |
+| Medium | Write JWT authentication API | Balanced coding model |
+| Complex | Design scalable AI SaaS architecture | Reasoning model |
+
+The dashboard displays:
+- Selected model
+- Latency
+- Token usage
+- Estimated savings
+- Routing explanation
+- Rejected alternatives
 
 ## Architecture
 
 ```
 app.py            → Streamlit UI
-analyzer.py       → Complexity intelligence (hybrid classifier)
+analyzer.py       → analyzer.py → Complexity intelligence and request scoring
 router.py         → Model selection logic
 models.py         → Model catalogue + cost calculation
 providers.py      → Gemini / Groq API calls + fallback handling
@@ -162,8 +197,8 @@ verify_models.py  → Provider availability testing
 ## Getting Started
 
 ```bash
-git clone https://github.com/username/modelmesh.git
-cd modelmesh
+git clone https://github.com/hussnain-sulehri/ModelMesh
+cd ModelMesh
 
 python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate

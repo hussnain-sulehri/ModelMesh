@@ -2,90 +2,162 @@
 ModelMesh AI Router
 
 Intelligent LLM routing layer that selects the best model
-based on cost, speed and quality.
+for each request using:
 
-Run:
+- complexity
+- quality
+- estimated API cost
+- latency
+- provider availability
+
+Run locally:
+
     streamlit run app.py
 """
 
 import pandas as pd
-import streamlit as st
 import plotly.express as px
+import streamlit as st
 
 from analyzer import analyze_request
 from config import get_key, mask
 from models import MODELS, estimate_cost
-from providers import ProviderError, call_model, call_with_fallback
-from router import DEFAULT_WEIGHTS, baseline, select_model
+from providers import (
+    ProviderError,
+    QuotaError,
+    call_model,
+    call_with_fallback,
+)
+from router import (
+    DEFAULT_WEIGHTS,
+    baseline,
+    select_model,
+)
 
 
 # --------------------------------------------------
-# Page Config
+# Page configuration
 # --------------------------------------------------
 
 st.set_page_config(
     page_title="ModelMesh AI Router",
-    page_icon="🔀",
-    layout="wide"
+    page_icon="",
+    layout="wide",
+)
+st.markdown(
+"""
+<style>
+
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 1rem;
+}
+
+h1 {
+    margin-bottom: 0.2rem;
+}
+
+h2 {
+    margin-top: 0.8rem;
+}
+
+[data-testid="stSidebar"] {
+    padding-top: 1rem;
+}
+
+</style>
+""",
+unsafe_allow_html=True
 )
 
-
-st.title("🔀 ModelMesh AI Router")
+st.title("ModelMesh AI Router")
 
 st.caption(
-    "Route every request to the cheapest model that can still answer it"
+    "Intelligent LLM routing based on cost, speed, quality and request complexity."
 )
 
 
 # --------------------------------------------------
-# Keys
+# API keys
 # --------------------------------------------------
 
 keys = {
     "gemini": get_key("GEMINI_API_KEY"),
-    "groq": get_key("GROQ_API_KEY")
+    "groq": get_key("GROQ_API_KEY"),
 }
-st.sidebar.write(
-    "Gemini loaded:",
-    bool(keys["gemini"])
-)
 
-st.sidebar.write(
-    "Groq loaded:",
-    bool(keys["groq"])
-)
 
 # --------------------------------------------------
-# Session State
+# Session state
 # --------------------------------------------------
 
 defaults = {
+
     "unavailable": set(),
+
     "log": [],
+
     "execution_error": None,
-    "demo_prompt": "",
+
     "force_failure": False,
-    "last_logged": None,
-    "last_routed_prompt": ""
+
+    "last_routed_prompt": "",
+
+    "prompt_input": "",
 }
 
 
 for key, value in defaults.items():
+
     if key not in st.session_state:
+
         st.session_state[key] = value
 
-def clear_current_result():
 
-    st.session_state.pop("result", None)
-    st.session_state.pop("decision", None)
-    st.session_state.pop("analysis", None)
+# --------------------------------------------------
+# Helpers
+# --------------------------------------------------
+
+def clear_current_result():
+    """
+    Clear output associated with the previous prompt.
+    """
+
+    st.session_state.pop(
+        "result",
+        None,
+    )
+
+    st.session_state.pop(
+        "decision",
+        None,
+    )
+
+    st.session_state.pop(
+        "analysis",
+        None,
+    )
+
     st.session_state["execution_error"] = None
+
+
+def set_demo_prompt(text: str):
+    """
+    Set a demo prompt and remove stale results.
+    """
+
+    st.session_state["prompt_input"] = text
+
+    clear_current_result()
+
 
 # --------------------------------------------------
 # Sidebar
 # --------------------------------------------------
 
-st.sidebar.title("⚙ Router Controls")
+st.sidebar.title(
+    "Router Controls"
+)
 
 
 st.sidebar.caption(
@@ -100,61 +172,89 @@ st.sidebar.caption(
 st.sidebar.divider()
 
 
-st.sidebar.subheader("Optimization Objective")
+# --------------------------------------------------
+# Optimization weights
+# --------------------------------------------------
 
+st.sidebar.header("Optimization Objective")
+st.sidebar.caption(
+    "Adjust the routing strategy between cost efficiency, "
+    "response speed and answer quality."
+)
 
 w_cost = st.sidebar.slider(
     "Cost",
     0.0,
     1.0,
     DEFAULT_WEIGHTS["cost"],
-    0.05
+    0.05,
 )
+
 
 w_speed = st.sidebar.slider(
     "Speed",
     0.0,
     1.0,
     DEFAULT_WEIGHTS["speed"],
-    0.05
+    0.05,
 )
+
 
 w_quality = st.sidebar.slider(
     "Quality",
     0.0,
     1.0,
     DEFAULT_WEIGHTS["quality"],
-    0.05
+    0.05,
 )
 
 
-total = w_cost + w_speed + w_quality or 1
+total = (
+    w_cost
+    + w_speed
+    + w_quality
+) or 1.0
 
 
 weights = {
-    "cost": w_cost / total,
-    "speed": w_speed / total,
-    "quality": w_quality / total
+
+    "cost":
+        w_cost / total,
+
+    "speed":
+        w_speed / total,
+
+    "quality":
+        w_quality / total,
 }
 
 
 st.sidebar.divider()
 
 
+# --------------------------------------------------
+# Execution controls
+# --------------------------------------------------
 
 execute = st.sidebar.checkbox(
     "Execute model response",
-    value=True
+    value=True,
 )
 
 
 st.sidebar.checkbox(
-    "Simulate provider failure",
+    "Simulate selected-model failure",
     key="force_failure",
-    help="Demo fallback handling"
+    help=(
+        "The selected model is intentionally skipped "
+        "so ModelMesh demonstrates automatic fallback."
+    ),
 )
 
 
+# --------------------------------------------------
+# Temporary unavailable models
+# --------------------------------------------------
 
 if st.session_state["unavailable"]:
 
@@ -162,168 +262,369 @@ if st.session_state["unavailable"]:
         "Temporary unavailable this session:\n\n"
         +
         "\n".join(
-            sorted(st.session_state["unavailable"])
+            sorted(
+                st.session_state["unavailable"]
+            )
         )
     )
 
-    if st.sidebar.button("Reset availability"):
+
+    if st.sidebar.button(
+        "Reset availability"
+    ):
+
         st.session_state["unavailable"] = set()
 
+        st.rerun()
 
 
 # --------------------------------------------------
-# Demo Prompts
+# Session log control
 # --------------------------------------------------
 
-st.subheader("🚀 Quick Demo")
+if st.sidebar.button(
+    "Clear session log"
+):
+
+    st.session_state["log"] = []
+
+    st.rerun()
+
+
+# --------------------------------------------------
+# Quick demo prompts
+# --------------------------------------------------
+
+st.subheader(
+    "Quick Demo"
+)
 
 
 demo1, demo2, demo3 = st.columns(3)
 
 
-if demo1.button("🟢 Simple Question"):
-
-    st.session_state["demo_prompt"] = (
-        "Explain what HTML is"
-    )
-
-    clear_current_result()
-
-
-
-if demo2.button("🟡 Medium Task"):
-
-    st.session_state["demo_prompt"] = (
-        "Write Python code for JWT authentication API"
-    )
-
-    clear_current_result()
+demo1.button(
+    "🟢 Simple Question",
+    on_click=set_demo_prompt,
+    args=(
+        "Explain what HTML is",
+    ),
+)
 
 
+demo2.button(
+    "🟡 Medium Task",
+    on_click=set_demo_prompt,
+    args=(
+        "Write Python code for JWT authentication API",
+    ),
+)
 
-if demo3.button("🔴 Complex Reasoning"):
 
-    st.session_state["demo_prompt"] = (
-        "Design scalable architecture for AI SaaS platform"
-    )
-
-    clear_current_result()
-
+demo3.button(
+    "🔴 Complex Reasoning",
+    on_click=set_demo_prompt,
+    args=(
+        "Design scalable architecture for AI SaaS platform",
+    ),
+)
 
 
 # --------------------------------------------------
-# Input
+# Prompt input
 # --------------------------------------------------
 
 prompt = st.text_area(
     "Request",
-    value=st.session_state["demo_prompt"],
+    key="prompt_input",
     height=140,
-    placeholder="Ask anything..."
+    placeholder="Ask anything...",
+    on_change=clear_current_result,
 )
-# Clear previous answer when user edits the prompt
-if (
-    st.session_state["last_routed_prompt"]
-    and prompt != st.session_state["last_routed_prompt"]
-):
-
-    st.session_state.pop("result", None)
-    st.session_state.pop("decision", None)
-    st.session_state.pop("analysis", None)
-    st.session_state["execution_error"] = None
 
 
 # --------------------------------------------------
-# Routing
+# Route request
 # --------------------------------------------------
 
 if st.button(
     "Route Request",
     type="primary",
-    disabled=not prompt.strip()
+    disabled=not prompt.strip(),
 ):
 
     st.session_state["execution_error"] = None
 
+
+    # --------------------------------------------------
+    # Semantic classifier
+    # --------------------------------------------------
+    #
+    # The analyzer itself decides whether it needs this.
+    # Obvious LOW/HIGH prompts do not necessarily call it.
+    # --------------------------------------------------
+
     classifier = None
 
+
     if keys["groq"]:
-        cheapest = min(
-            MODELS,
-            key=lambda k: MODELS[k]["output_cost"]
-        )
 
-        classifier = lambda text: call_model(
-            cheapest,
-            text,
-            keys
-        )["answer"]
+        # Prefer Qwen for English semantic classification.
+        if (
+            "groq-medium"
+            not in st.session_state["unavailable"]
+        ):
+
+            classifier_model = "groq-medium"
+
+        else:
+
+            classifier_model = "groq-fast"
 
 
-    with st.spinner("Analyzing request..."):
+        def classifier(text):
+
+            try:
+
+                return call_model(
+                    classifier_model,
+                    text,
+                    keys,
+                )["answer"]
+
+            except QuotaError:
+
+                st.session_state[
+                    "unavailable"
+                ].add(
+                    classifier_model
+                )
+
+                raise
+
+
+    # --------------------------------------------------
+    # Analyze request
+    # --------------------------------------------------
+
+    with st.spinner(
+        "Analyzing request..."
+    ):
 
         analysis = analyze_request(
             prompt,
-            call=classifier
+            call=classifier,
         )
+
+
+    # --------------------------------------------------
+    # Select model
+    # --------------------------------------------------
 
     decision = select_model(
         analysis,
         prompt=prompt,
         weights=weights,
-        unavailable=st.session_state["unavailable"]
+        unavailable=
+            st.session_state["unavailable"],
     )
-    st.session_state["last_routed_prompt"] = prompt
 
-    st.session_state["analysis"] = analysis
 
-    st.session_state["decision"] = decision
+    st.session_state[
+        "last_routed_prompt"
+    ] = prompt
+
+
+    st.session_state[
+        "analysis"
+    ] = analysis
+
+
+    st.session_state[
+        "decision"
+    ] = decision
 
 
     st.session_state.pop(
         "result",
-        None
+        None,
     )
 
 
+    # --------------------------------------------------
+    # Execute model
+    # --------------------------------------------------
 
     if execute:
 
+        # --------------------------------------------------
+        # Quality-aware fallback candidates
+        # --------------------------------------------------
+        #
+        # Fallback may move upward in quality,
+        # but must never go below the complexity floor.
+        # --------------------------------------------------
+
+        floor = decision[
+            "quality_floor"
+        ]
+
+
+        eligible_fallbacks = [
+
+            key
+
+            for key, spec
+            in MODELS.items()
+
+            if (
+                spec["quality"] >= floor
+                and key
+                not in st.session_state[
+                    "unavailable"
+                ]
+            )
+        ]
+
+
+        # Prefer models closest in quality to the selected
+        # model, then cheaper/faster alternatives.
+
+        selected_quality = (
+            decision["spec"]["quality"]
+        )
+
+
         order = sorted(
-            MODELS,
-            key=lambda k: MODELS[k]["quality"],
-            reverse=True
+
+            eligible_fallbacks,
+
+            key=lambda key: (
+
+                abs(
+                    MODELS[key]["quality"]
+                    - selected_quality
+                ),
+
+                MODELS[key]["output_cost"],
+
+                MODELS[key]["typical_latency"],
+            ),
+        )
+
+
+        simulate_failure_for = (
+
+            decision["key"]
+
+            if st.session_state[
+                "force_failure"
+            ]
+
+            else None
         )
 
 
         try:
 
             with st.spinner(
-                f"Calling {decision['spec']['model']}..."
+                f"Calling "
+                f"{decision['spec']['model']}..."
             ):
 
+                result = call_with_fallback(
 
-                if st.session_state["force_failure"]:
-
-                    raise ProviderError(
-                        "Simulated provider failure"
-                    )
-
-
-                st.session_state["result"] = call_with_fallback(
                     decision["key"],
+
                     prompt,
+
                     keys,
-                    st.session_state["unavailable"],
-                    order
+
+                    st.session_state[
+                        "unavailable"
+                    ],
+
+                    order,
+
+                    simulate_failure_for=
+                        simulate_failure_for,
                 )
+
+
+            st.session_state[
+                "result"
+            ] = result
+
+
+            # --------------------------------------------------
+            # Premium-model baseline
+            # --------------------------------------------------
+
+            large = baseline(
+                "always_large"
+            )
+
+
+            baseline_cost = estimate_cost(
+
+                large,
+
+                result["input_tokens"],
+
+                result.get(
+                    "billable_output_tokens",
+                    result["output_tokens"],
+                ),
+            )
+
+
+            # --------------------------------------------------
+            # Log only once, at execution time
+            # --------------------------------------------------
+
+            st.session_state[
+                "log"
+            ].append(
+                {
+                    "Request":
+                        prompt[:60],
+
+                    "Complexity":
+                        analysis["complexity"],
+
+                    "Model":
+                        result["model"],
+
+                    "Estimated Cost":
+                        result["cost"],
+
+                    "Latency":
+                        result["latency"],
+
+                    "Premium baseline cost":
+                        round(
+                            baseline_cost,
+                            6,
+                        ),
+                }
+            )
+
+
+            # Keep latest 10 requests.
+            st.session_state[
+                "log"
+            ] = (
+                st.session_state[
+                    "log"
+                ][-10:]
+            )
 
 
         except ProviderError as error:
 
-            st.session_state["execution_error"] = str(error)
-
-
+            st.session_state[
+                "execution_error"
+            ] = str(error)
 
 
 # --------------------------------------------------
@@ -332,38 +633,59 @@ if st.button(
 
 if "decision" in st.session_state:
 
+    analysis = st.session_state[
+        "analysis"
+    ]
 
-    analysis = st.session_state["analysis"]
+    decision = st.session_state[
+        "decision"
+    ]
 
-    decision = st.session_state["decision"]
+    result = st.session_state.get(
+        "result"
+    )
 
-    result = st.session_state.get("result")
 
-
+    # --------------------------------------------------
+    # Degraded routing warning
+    # --------------------------------------------------
 
     if decision["degraded"]:
 
         st.warning(
-            "Quality requirement could not be met. "
-            "Using best available fallback model."
+            "Requested quality band was unavailable. "
+            "ModelMesh selected the best remaining model."
         )
 
 
-
+    # --------------------------------------------------
     # Metrics
+    # --------------------------------------------------
 
-    c1,c2,c3,c4,c5 = st.columns(5)
+    c1, c2, c3, c4, c5 = st.columns(5)
 
 
     c1.metric(
         "Complexity",
-        analysis["complexity"].upper()
+        analysis["complexity"].upper(),
+    )
+
+
+    actual_model = (
+
+        result["model"]
+
+        if result
+
+        else decision[
+            "spec"
+        ]["model"]
     )
 
 
     c2.metric(
         "Model",
-        decision["spec"]["model"]
+        actual_model,
     )
 
 
@@ -371,158 +693,290 @@ if "decision" in st.session_state:
 
         c3.metric(
             "Latency",
-            f"{result['latency']}s"
+            f"{result['latency']}s",
         )
 
 
         c4.metric(
             "Tokens",
-            f"{result['input_tokens']} → {result['output_tokens']}"
+            (
+                f"{result['input_tokens']} → "
+                f"{result['output_tokens']}"
+            ),
+        )
+
+
+        large = baseline(
+            "always_large"
+        )
+
+
+        large_cost = estimate_cost(
+
+            large,
+
+            result["input_tokens"],
+
+            result.get(
+                "billable_output_tokens",
+                result["output_tokens"],
+            ),
+        )
+
+
+        if large_cost > 0:
+
+            savings = (
+                1
+                -
+                result["cost"]
+                /
+                large_cost
+            ) * 100
+
+        else:
+
+            savings = 0
+
+
+        c5.metric(
+            "Est. Savings",
+            f"{savings:.1f}%",
         )
 
 
     else:
 
         c3.metric(
-            "Est. Cost",
-            f"${decision['estimated_cost']:.6f}"
+            "Est. API Cost",
+            (
+                f"${decision['estimated_cost']:.6f}"
+            ),
         )
 
 
-    large = baseline(
-        "always_large"
-    )
-
-
-    large_cost = estimate_cost(
-        large,
-        decision["input_tokens"],
-        result["output_tokens"] if result else 500
-    )
-
-
-    if result:
-
-        saved = (
-            1-result["cost"]/large_cost
-        )*100
-
-        c5.metric(
-            "Savings",
-            f"{saved:.1f}%"
-        )
-
-
-
+    # --------------------------------------------------
     # Tabs
+    # --------------------------------------------------
 
-    answer_tab, why_tab, savings_tab, log_tab = st.tabs(
+    (
+        answer_tab,
+        why_tab,
+        savings_tab,
+        log_tab,
+    ) = st.tabs(
         [
             "💬 Answer",
             "🧠 Routing Intelligence",
             "💰 Savings",
-            "📊 Session Log"
+            "📊 Session Log",
         ]
     )
 
 
-
-    # Answer
+    # --------------------------------------------------
+    # Answer tab
+    # --------------------------------------------------
 
     with answer_tab:
 
-
         if result:
+
+            if result.get(
+                "fell_back"
+            ):
+
+                st.warning(
+                    "Selected model failed. "
+                    "ModelMesh automatically used "
+                    f"{result['model']} instead."
+                )
+
+
+                if result.get(
+                    "tried"
+                ):
+
+                    with st.expander(
+                        "Fallback details"
+                    ):
+
+                        for failure in result[
+                            "tried"
+                        ]:
+
+                            st.write(
+                                f"• {failure}"
+                            )
+
 
             st.success(
                 "Response generated successfully"
             )
+
 
             st.write(
                 result["answer"]
             )
 
 
-            st.caption(
+            caption = (
                 f"{result['model']} | "
                 f"{result['latency']}s | "
                 f"{result['input_tokens']} input | "
-                f"{result['output_tokens']} output"
+                f"{result['output_tokens']} visible output"
             )
 
 
-        elif st.session_state["execution_error"]:
+            if result.get(
+                "thinking_tokens",
+                0,
+            ):
+
+                caption += (
+                    " | "
+                    f"{result['thinking_tokens']} "
+                    "thinking"
+                )
+
+
+            st.caption(
+                caption
+            )
+
+
+            st.caption(
+                "Cost values are estimated from "
+                "configured provider list prices; "
+                "free-tier execution may incur no "
+                "actual charge."
+            )
+
+
+        elif st.session_state[
+            "execution_error"
+        ]:
 
             st.error(
                 "Routing succeeded but execution failed:\n\n"
                 +
-                st.session_state["execution_error"]
+                st.session_state[
+                    "execution_error"
+                ]
             )
 
 
         else:
 
             st.info(
-                "Execution disabled. Enable model execution."
+                "Execution disabled. "
+                "Enable model execution in the sidebar."
             )
 
 
-
-    # Intelligence
+    # --------------------------------------------------
+    # Routing intelligence tab
+    # --------------------------------------------------
 
     with why_tab:
-
 
         st.subheader(
             "Why this model?"
         )
 
 
-        for signal in analysis["signals"]:
+        st.write(
+            f"Analyzer method: "
+            f"`{analysis.get('method', 'unknown')}`"
+        )
+
+
+        if "score" in analysis:
+
+            st.write(
+                f"Complexity score: "
+                f"**{analysis['score']}/100**"
+            )
+
+
+        for signal in analysis.get(
+            "signals",
+            [],
+        ):
 
             st.write(
                 "✓",
-                signal
+                signal,
             )
 
 
         st.write(
-            f"Quality requirement: "
-            f"{decision['quality_floor']}/10"
+            "Quality requirement: "
+            f"**{decision['quality_floor']}–"
+            f"{decision['quality_ceiling']}/10**"
         )
-
 
 
         if decision["scores"]:
 
+            rows = []
 
-            rows=[]
 
+            for (
+                model_key,
+                score,
+            ) in decision[
+                "scores"
+            ].items():
 
-            for model,score in decision["scores"].items():
+                spec = MODELS[
+                    model_key
+                ]
+
 
                 rows.append(
                     {
-                    "Model":MODELS[model]["model"],
-                    "Quality":MODELS[model]["quality"],
-                    "Cost":MODELS[model]["output_cost"],
-                    "Latency":MODELS[model]["typical_latency"],
-                    "Score":score,
-                    "Winner":
-                    "🏆" if model==decision["key"] else ""
+                        "Model":
+                            spec["model"],
+
+                        "Quality":
+                            spec["quality"],
+
+                        "Input $/1M":
+                            spec["input_cost"],
+
+                        "Output $/1M":
+                            spec["output_cost"],
+
+                        "Typical Latency":
+                            spec[
+                                "typical_latency"
+                            ],
+
+                        "Router Score":
+                            score,
+
+                        "Winner":
+                            (
+                                "🏆"
+                                if model_key
+                                == decision["key"]
+                                else ""
+                            ),
                     }
                 )
 
 
-            df=pd.DataFrame(rows)
+            df = pd.DataFrame(
+                rows
+            )
 
 
             st.dataframe(
                 df,
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
             )
-
 
 
         st.subheader(
@@ -530,106 +984,131 @@ if "decision" in st.session_state:
         )
 
 
-        for key,reason in decision["rejected"].items():
+        if decision["rejected"]:
 
-            st.write(
-                f"❌ {MODELS[key]['model']}: {reason}"
+            for (
+                key,
+                reason,
+            ) in decision[
+                "rejected"
+            ].items():
+
+                st.write(
+                    f"❌ "
+                    f"{MODELS[key]['model']}: "
+                    f"{reason}"
+                )
+
+
+        else:
+
+            st.caption(
+                "No models were rejected."
             )
 
 
-
-    # Savings
+    # --------------------------------------------------
+    # Savings tab
+    # --------------------------------------------------
 
     with savings_tab:
 
+        if st.session_state[
+            "log"
+        ]:
 
-        if st.session_state["log"]:
-
-
-            df=pd.DataFrame(
-                st.session_state["log"]
+            savings_df = pd.DataFrame(
+                st.session_state[
+                    "log"
+                ]
             )
 
 
-            chart=df[
+            chart = savings_df[
                 [
-                "Cost",
-                "Always-large cost"
+                    "Estimated Cost",
+                    "Premium baseline cost",
                 ]
             ].cumsum()
 
 
-            fig=px.line(
+            fig = px.line(
                 chart,
                 markers=True,
-                title="ModelMesh Savings"
+                title=(
+                    "Cumulative Estimated "
+                    "API Cost"
+                ),
             )
 
 
             st.plotly_chart(
                 fig,
-                use_container_width=True
+                use_container_width=True,
             )
+
+
+            total_router = savings_df[
+                "Estimated Cost"
+            ].sum()
+
+
+            total_baseline = savings_df[
+                "Premium baseline cost"
+            ].sum()
+
+
+            if total_baseline > 0:
+
+                total_saved = (
+                    1
+                    -
+                    total_router
+                    /
+                    total_baseline
+                ) * 100
+
+
+                st.metric(
+                    "Estimated Session Savings",
+                    f"{total_saved:.1f}%",
+                )
 
 
         else:
 
             st.info(
-                "Run multiple requests to see savings."
+                "Run multiple requests to "
+                "see cumulative savings."
             )
 
 
-
-    # Logs
+    # --------------------------------------------------
+    # Session log tab
+    # --------------------------------------------------
 
     with log_tab:
 
-        if result:
+        if st.session_state[
+            "log"
+        ]:
 
-            run_id = (
-                prompt,
-                result["model"],
-                result["cost"],
-                result["latency"]
-            )
-
-            if st.session_state["last_logged"] != run_id:
-                st.session_state["log"].append(
-                    {
-                        "Request": prompt[:60],
-                        "Complexity": analysis["complexity"],
-                        "Model": result["model"],
-                        "Cost": result["cost"],
-                        "Latency": result["latency"],
-                        "Always-large cost": round(
-                            large_cost,
-                            6
-                        )
-                    }
-                )
-                st.session_state["log"] = (
-                    st.session_state["log"][-10:]
-                )
-                st.session_state["last_logged"] = run_id
-
-
-        if st.session_state["log"]:
-
-
-            frame=pd.DataFrame(
-                st.session_state["log"]
+            frame = pd.DataFrame(
+                st.session_state[
+                    "log"
+                ]
             )
 
 
             st.dataframe(
                 frame,
                 hide_index=True,
-                use_container_width=True
+                use_container_width=True,
             )
 
 
         else:
 
             st.info(
-                "No requests yet."
+                "No executed requests yet."
             )
