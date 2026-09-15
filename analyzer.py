@@ -129,11 +129,11 @@ LOW_PATTERNS = (
 
 
 DESIGN_PATTERNS = (
-    r"\bhow would you design\b",
-    r"\bdesign (?:a|an|the)\b",
-    r"\barchitect (?:a|an|the)\b",
-    r"\bpropose (?:a|an|the)\b",
-    r"\bdevise (?:a|an|the)\b",
+    r"\bdesign\b",
+    r"\barchitect\b",
+    r"\bpropose\b",
+    r"\bdevise\b",
+    r"\bplan\b",
 )
 
 

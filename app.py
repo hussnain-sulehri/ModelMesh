@@ -141,11 +141,6 @@ weights = {
 st.sidebar.divider()
 
 
-use_llm_classifier = st.sidebar.checkbox(
-    "Classify with small model",
-    value=False
-)
-
 
 execute = st.sidebar.checkbox(
     "Execute model response",
@@ -250,12 +245,9 @@ if st.button(
 
     st.session_state["execution_error"] = None
 
-
     classifier = None
 
-
-    if use_llm_classifier and keys["groq"]:
-
+    if keys["groq"]:
         cheapest = min(
             MODELS,
             key=lambda k: MODELS[k]["output_cost"]
@@ -266,7 +258,6 @@ if st.button(
             text,
             keys
         )["answer"]
-
 
 
     with st.spinner("Analyzing request..."):
