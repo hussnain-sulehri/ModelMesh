@@ -1,0 +1,78 @@
+# ==================================
+# Secrets - never commit these
+# ==================================
+.env
+.env.local
+.streamlit/secrets.toml
+*.key
+*.pem
+
+
+# ==================================
+# Virtual environments
+# ==================================
+venv/
+env/
+.venv/
+
+
+# ==================================
+# Python
+# ==================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+
+# ==================================
+# Streamlit
+# ==================================
+.streamlit/cache/
+.streamlit/secrets.toml
+
+
+# ==================================
+# AI Router Local Data
+# ==================================
+
+# Benchmark outputs
+benchmarks/
+
+# Local test results
+runs/
+
+# Logs
+*.log
+
+# Temporary model outputs
+outputs/
+results/
+
+
+# ==================================
+# Environment / IDE
+# ==================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+
+# ==================================
+# Jupyter / notebooks
+# ==================================
+.ipynb_checkpoints/
+
+
+# ==================================
+# OS generated files
+# ==================================
+*.swp
+*.swo
+
+# Benchmark generated results
+benchmarks/
