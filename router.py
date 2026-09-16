@@ -65,6 +65,16 @@ def select_model(
     eligible: list[str] = []
     rejected: dict[str, str] = {}
 
+    # The ceiling exists to stop overpaying. A model above the ceiling that is
+    # cheaper than every in-band model is not overkill, it is a better deal,
+    # so it stays eligible. Priced on output cost, which dominates LLM bills.
+    in_band_costs = [
+        spec["output_cost"]
+        for key, spec in MODELS.items()
+        if key not in unavailable and floor <= spec["quality"] <= ceiling
+    ]
+    cheapest_in_band = min(in_band_costs) if in_band_costs else None
+
     for key, spec in MODELS.items():
         quality = spec["quality"]
 
@@ -72,7 +82,9 @@ def select_model(
             rejected[key] = "out of quota or unreachable"
         elif quality < floor:
             rejected[key] = f"quality {quality} below floor {floor}"
-        elif quality > ceiling:
+        elif quality > ceiling and (
+            cheapest_in_band is None or spec["output_cost"] >= cheapest_in_band
+        ):
             rejected[key] = f"quality {quality} above ceiling {ceiling}, overkill here"
         else:
             eligible.append(key)

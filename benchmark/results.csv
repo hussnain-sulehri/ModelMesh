@@ -1,0 +1,21 @@
+id,category,prompt,complexity,model,provider,latency,input_tokens,output_tokens,cost
+1,low,Explain what HTML is,low,allam-2-7b,groq,0.82,12,287,2.3e-05
+2,low,What is Python programming?,low,allam-2-7b,groq,0.23,12,232,1.9e-05
+3,low,Define API in simple words,low,allam-2-7b,groq,0.18,12,155,1.3e-05
+4,low,Explain the difference between frontend and backend,low,allam-2-7b,groq,0.41,17,480,3.9e-05
+5,low,What is a database?,low,allam-2-7b,groq,0.25,12,243,2e-05
+6,low,Explain machine learning in simple terms,low,allam-2-7b,groq,0.39,14,414,3.4e-05
+7,low,What is cloud computing?,low,allam-2-7b,groq,0.21,12,184,1.5e-05
+8,medium,Write Python code for JWT authentication API,medium,openai/gpt-oss-120b,groq,5.95,78,2664,0.00161
+9,medium,Create a REST API with database integration,medium,openai/gpt-oss-120b,groq,6.89,78,3072,0.001855
+10,medium,Explain how Docker containers work with examples,medium,openai/gpt-oss-120b,groq,6.94,78,3072,0.001855
+11,medium,Design a database schema for an e-commerce application,medium,openai/gpt-oss-120b,groq,19.02,80,3072,0.001855
+12,medium,Debug a Python application and suggest improvements,medium,openai/gpt-oss-120b,groq,22.24,78,2180,0.00132
+13,medium,Explain how to deploy a Flask application on cloud infrastructure,medium,openai/gpt-oss-120b,groq,18.97,81,3072,0.001855
+14,medium,Build a recommendation system architecture for a small application,medium,openai/gpt-oss-120b,groq,6.65,80,3072,0.001855
+15,high,Design a scalable AI SaaS platform architecture supporting millions of users,high,openai/gpt-oss-120b,groq,31.2,83,3072,0.001856
+16,high,"Design a multi-model AI routing system that optimizes cost, latency, and reliability",high,openai/gpt-oss-120b,groq,23.76,87,3072,0.001856
+17,high,"Compare RAG, fine-tuning, and agent-based architectures for an enterprise AI platform",high,openai/gpt-oss-120b,groq,23.52,88,3072,0.001856
+18,high,Design a fault-tolerant distributed system with automatic model fallback and monitoring,high,openai/gpt-oss-120b,groq,34.2,85,3072,0.001856
+19,high,Analyze how an enterprise can reduce LLM inference costs while maintaining response quality,high,openai/gpt-oss-120b,groq,14.66,85,3072,0.001856
+20,high,"Design an AI infrastructure platform supporting multiple providers, dynamic routing, and usage optimization",high,openai/gpt-oss-120b,groq,26.67,86,3072,0.001856

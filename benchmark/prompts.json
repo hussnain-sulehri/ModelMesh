@@ -1,0 +1,104 @@
+[
+  {
+    "id": 1,
+    "category": "low",
+    "prompt": "Explain what HTML is"
+  },
+  {
+    "id": 2,
+    "category": "low",
+    "prompt": "What is Python programming?"
+  },
+  {
+    "id": 3,
+    "category": "low",
+    "prompt": "Define API in simple words"
+  },
+  {
+    "id": 4,
+    "category": "low",
+    "prompt": "Explain the difference between frontend and backend"
+  },
+  {
+    "id": 5,
+    "category": "low",
+    "prompt": "What is a database?"
+  },
+  {
+    "id": 6,
+    "category": "low",
+    "prompt": "Explain machine learning in simple terms"
+  },
+  {
+    "id": 7,
+    "category": "low",
+    "prompt": "What is cloud computing?"
+  },
+
+  {
+    "id": 8,
+    "category": "medium",
+    "prompt": "Write Python code for JWT authentication API"
+  },
+  {
+    "id": 9,
+    "category": "medium",
+    "prompt": "Create a REST API with database integration"
+  },
+  {
+    "id": 10,
+    "category": "medium",
+    "prompt": "Explain how Docker containers work with examples"
+  },
+  {
+    "id": 11,
+    "category": "medium",
+    "prompt": "Design a database schema for an e-commerce application"
+  },
+  {
+    "id": 12,
+    "category": "medium",
+    "prompt": "Debug a Python application and suggest improvements"
+  },
+  {
+    "id": 13,
+    "category": "medium",
+    "prompt": "Explain how to deploy a Flask application on cloud infrastructure"
+  },
+  {
+    "id": 14,
+    "category": "medium",
+    "prompt": "Build a recommendation system architecture for a small application"
+  },
+
+  {
+    "id": 15,
+    "category": "high",
+    "prompt": "Design a scalable AI SaaS platform architecture supporting millions of users"
+  },
+  {
+    "id": 16,
+    "category": "high",
+    "prompt": "Design a multi-model AI routing system that optimizes cost, latency, and reliability"
+  },
+  {
+    "id": 17,
+    "category": "high",
+    "prompt": "Compare RAG, fine-tuning, and agent-based architectures for an enterprise AI platform"
+  },
+  {
+    "id": 18,
+    "category": "high",
+    "prompt": "Design a fault-tolerant distributed system with automatic model fallback and monitoring"
+  },
+  {
+    "id": 19,
+    "category": "high",
+    "prompt": "Analyze how an enterprise can reduce LLM inference costs while maintaining response quality"
+  },
+  {
+    "id": 20,
+    "category": "high",
+    "prompt": "Design an AI infrastructure platform supporting multiple providers, dynamic routing, and usage optimization"
+  }
+]

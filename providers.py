@@ -148,6 +148,7 @@ def call_model(
                 .models
                 .generate_content(
                     model=spec["model"],
+                    max_completion_tokens=8192,
                     contents=prompt,
                 )
             )
